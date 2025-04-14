@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -87,6 +88,33 @@ func (m *Monitor) GetDiskUsage() (string, error) {
 			float64(usage.Total)/1024/1024/1024,
 			usage.UsedPercent,
 		))
+	}
+
+	return result.String(), nil
+}
+
+func (m *Monitor) GetNetworkDetails() (string, error) {
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return "", fmt.Errorf("error getting network interfaces: %w", err)
+	}
+
+	var result strings.Builder
+	result.WriteString("Network Details:\n")
+
+	for _, iface := range interfaces {
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+
+		for _, addr := range addrs {
+			if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+				if ipnet.IP.To4() != nil {
+					result.WriteString(fmt.Sprintf("%s: %s\n", iface.Name, ipnet.IP.String()))
+				}
+			}
+		}
 	}
 
 	return result.String(), nil

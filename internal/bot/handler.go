@@ -32,6 +32,7 @@ func (h *Handler) HandleCommand(bot *tgbotapi.BotAPI, message *tgbotapi.Message)
 /uptime - Show system uptime
 /top - Show top 5 processes
 /disk - Show disk usage
+/network_details - Show network details
 
 Reminder Commands:
 /reminder_eye_drop - Start eye drop reminders
@@ -53,6 +54,9 @@ Reminder Commands:
 
 	case "disk":
 		text, err = h.monitor.GetDiskUsage()
+
+	case "network_details":
+		text, err = h.monitor.GetNetworkDetails()
 
 	case "reminder_eye_drop":
 		text = h.reminder.StartEyeDrops(message.Chat.ID)

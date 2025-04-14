@@ -19,7 +19,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-
 	// Start the bot
 	b.Start()
 }
