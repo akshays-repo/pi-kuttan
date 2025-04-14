@@ -12,6 +12,7 @@ import (
 type Config struct {
 	BotToken     string
 	AllowedUsers []int64
+	DatabasePath string
 }
 
 func Load() (*Config, error) {
@@ -39,8 +40,14 @@ func Load() (*Config, error) {
 		allowedUsers = append(allowedUsers, userID)
 	}
 
+	databasePath := os.Getenv("DATABASE_PATH")
+	if databasePath == "" {
+		return nil, fmt.Errorf("DATABASE_PATH is required")
+	}
+
 	return &Config{
 		BotToken:     botToken,
 		AllowedUsers: allowedUsers,
+		DatabasePath: databasePath,
 	}, nil
 }

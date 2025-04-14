@@ -25,3 +25,6 @@ go.work
 
 # Dependency directories
 vendor/
+
+# Data directory
+data/

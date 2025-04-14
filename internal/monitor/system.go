@@ -3,6 +3,7 @@ package monitor
 import (
 	"fmt"
 	"net"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -118,4 +119,14 @@ func (m *Monitor) GetNetworkDetails() (string, error) {
 	}
 
 	return result.String(), nil
+}
+
+func (m *Monitor) RebootSystem() (string, error) {
+	// Using -n flag with sudo to avoid password prompt
+	err := exec.Command("sudo", "-n", "reboot").Run()
+	if err != nil {
+		return "", fmt.Errorf("error rebooting system (make sure NOPASSWD is configured in sudoers): %w", err)
+	}
+
+	return "System is rebooting...", nil
 }
