@@ -1,0 +1,1 @@
+GOOS=linux GOARCH=arm64 go build -o mypibot-go-arm64 cmd/bot/main.go
