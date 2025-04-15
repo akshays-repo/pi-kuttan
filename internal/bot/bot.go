@@ -1,7 +1,6 @@
 package bot
 
 import (
-	"fmt"
 	"log"
 
 	"mypibot-go/internal/config"
@@ -64,22 +63,7 @@ func (b *Bot) recoverReminders() error {
 
 	recoveredCount := 0
 	for _, reminder := range reminders {
-		// Notify users about bot restart and reminder recovery
-		msg := tgbotapi.NewMessage(reminder.ChatID, 
-			"🔄 Bot has restarted!\n"+
-			"✅ Your reminder has been automatically recovered:\n"+
-			"Type: "+reminder.Type+"\n"+
-			"Message: "+reminder.Message+"\n"+
-			"Interval: Every "+fmt.Sprintf("%d", reminder.Interval)+" minutes")
-		
-		_, err := b.api.Send(msg)
-		if err != nil {
-			log.Printf("Failed to send recovery notification for reminder %d: %v", reminder.ID, err)
-			continue
-		}
-
-		recoveredCount++
-		log.Printf("Recovered reminder ID %d for chat %d", reminder.ID, reminder.ChatID)
+		b.handler.reminder.ResumeReminder(reminder.ChatID , reminder.ID)
 	}
 
 	log.Printf("Reminder recovery completed. Recovered %d active reminders", recoveredCount)
@@ -88,12 +72,6 @@ func (b *Bot) recoverReminders() error {
 
 func (b *Bot) Start() {
 	log.Printf("Authorized on account %s", b.api.Self.UserName)
-
-	// Notify all allowed users about bot start
-	for userID := range b.allowedUsers {
-		msg := tgbotapi.NewMessage(userID, "🤖 Bot is now online and ready!")
-		b.api.Send(msg)
-	}
 
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
@@ -119,10 +97,5 @@ func (b *Bot) Start() {
 func (b *Bot) Stop() {
 	if b.db != nil {
 		b.db.Close()
-	}
-	// Notify users about shutdown
-	for userID := range b.allowedUsers {
-		msg := tgbotapi.NewMessage(userID, "🔴 Bot is shutting down. Reminders will resume when bot is back online.")
-		b.api.Send(msg)
 	}
 }

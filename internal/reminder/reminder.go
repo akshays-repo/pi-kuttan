@@ -43,7 +43,7 @@ func (m *Manager) CreateReminder(chatID int64, interval int, message string) (in
 	m.timers[reminder.ID] = timer
 
 	// Start reminder loop in background
-	go m.reminderLoop(reminder.ID, timer, time.Duration(interval)*time.Minute, message)
+	go m.reminderLoop(reminder.ID, timer,  message)
 
 	return reminder.ID, nil
 }
@@ -95,20 +95,31 @@ func (m *Manager) ResumeReminder(chatID int64, reminderID int64) error {
 	if err != nil {
 		return fmt.Errorf("failed to get reminder: %w", err)
 	}
+	
 	if reminder.ChatID != chatID {
 		return fmt.Errorf("reminder not found")
 	}
 
-	// Create new timer
-	timer := time.NewTimer(time.Duration(reminder.Interval) * time.Minute)
+	
+	// Create new timer by calculating the time until the next trigger
+	var duration time.Duration
+	if time.Until(reminder.NextTrigger.Time) <= 0 {
+		// If next trigger is in the past, trigger immediately
+		duration = 0
+	} else {
+		duration = time.Until(reminder.NextTrigger.Time)
+	}
+	timer := time.NewTimer(duration)
 	m.timers[reminderID] = timer
 
 	// Start reminder loop
-	go m.reminderLoop(reminderID, timer, time.Duration(reminder.Interval)*time.Minute, reminder.Message)
+	go m.reminderLoop(reminderID, timer, reminder.Message)
 
 	// Update status in database
-	if err := m.db.UpdateReminderStatus(reminderID, "active"); err != nil {
-		return fmt.Errorf("failed to resume reminder: %w", err)
+	if reminder.Status == "paused" {
+		if err := m.db.UpdateReminderStatus(reminderID, "active"); err != nil {
+			return fmt.Errorf("failed to resume reminder: %w", err)
+		}
 	}
 
 	return nil
@@ -166,7 +177,7 @@ func (m *Manager) UpdateInterval(reminderID int64, chatID int64, newInterval int
 		timer.Stop()
 		newTimer := time.NewTimer(time.Duration(newInterval) * time.Minute)
 		m.timers[reminderID] = newTimer
-		go m.reminderLoop(reminderID, newTimer, time.Duration(newInterval)*time.Minute, reminder.Message)
+		go m.reminderLoop(reminderID, newTimer, reminder.Message)
 	}
 
 	return nil
@@ -212,7 +223,7 @@ func (m *Manager) RecoverActiveReminders() error {
 		m.timers[reminder.ID] = timer
 
 		// Start reminder loop
-		go m.reminderLoop(reminder.ID, timer, time.Duration(reminder.Interval)*time.Minute, reminder.Message)
+		go m.reminderLoop(reminder.ID, timer, reminder.Message)
 		
 		recoveredCount++
 		log.Printf("Recovered reminder ID %d, type: %s, next trigger in: %.2f minutes", 
@@ -224,42 +235,50 @@ func (m *Manager) RecoverActiveReminders() error {
 }
 
 // reminderLoop handles the periodic reminder notifications
-func (m *Manager) reminderLoop(reminderID int64, timer *time.Timer, interval time.Duration, message string) {
-	for {
-		select {
-		case <-timer.C:
-			m.Lock()
-			// Get current reminder status
-			reminder, err := m.db.GetReminder(reminderID)
-			if err != nil {
-				log.Printf("Error getting reminder %d: %v", reminderID, err)
-				m.Unlock()
-				return
-			}
-
-			if reminder.Status != "active" {
-				log.Printf("Reminder %d is no longer active, stopping loop", reminderID)
-				delete(m.timers, reminderID)
-				m.Unlock()
-				return
-			}
-
-			// Send notification
-			msg := tgbotapi.NewMessage(reminder.ChatID, fmt.Sprintf("🔔 Reminder: %s", message))
-			_, err = m.bot.Send(msg)
-			if err != nil {
-				log.Printf("Error sending reminder %d: %v", reminderID, err)
-			}
-
-			// Update last triggered time in database
-			err = m.db.UpdateReminderTrigger(reminderID)
-			if err != nil {
-				log.Printf("Error updating reminder trigger %d: %v", reminderID, err)
-			}
-
-			// Reset timer for next interval
-			timer.Reset(interval)
+func (m *Manager) reminderLoop(reminderID int64, timer *time.Timer, message string) {
+	for range timer.C {
+		m.Lock()
+		// Get current reminder status
+		reminder, err := m.db.GetReminder(reminderID)
+		if err != nil {
+			log.Printf("Error getting reminder %d: %v", reminderID, err)
 			m.Unlock()
+			return
 		}
+
+		if reminder.Status != "active" {
+			log.Printf("Reminder %d is no longer active, stopping loop", reminderID)
+			delete(m.timers, reminderID)
+			m.Unlock()
+			return
+		}
+
+		// Send notification
+		msg := tgbotapi.NewMessage(reminder.ChatID, fmt.Sprintf("🔔 Reminder: %s", message))
+		_, err = m.bot.Send(msg)
+		if err != nil {
+			log.Printf("Error sending reminder %d: %v", reminderID, err)
+		}
+
+		// Update last triggered time in database
+		err = m.db.UpdateReminderTrigger(reminderID)
+		if err != nil {
+			log.Printf("Error updating reminder trigger %d: %v", reminderID, err)
+		}
+
+		updatedReminder, err := m.db.GetReminder(reminderID)
+		if err != nil {
+			log.Printf("Error getting reminder %d: %v", reminderID, err)
+			m.Unlock()
+			return
+		}
+
+		// Reset timer for next interval
+		nextTrigger := updatedReminder.NextTrigger.Time
+		if nextTrigger.IsZero() {
+			nextTrigger = updatedReminder.CreatedAt.Add(time.Duration(updatedReminder.Interval) * time.Minute)
+		}
+		timer.Reset(time.Until(nextTrigger))
+		m.Unlock()
 	}
 }
